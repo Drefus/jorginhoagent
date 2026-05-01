@@ -1,0 +1,54 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database (optional)
+  postgres:
+    image: postgres:15-alpine
+    container_name: jorginhoagent-db
+    environment:
+      POSTGRES_USER: jorginhoagent
+      POSTGRES_PASSWORD: secure_password
+      POSTGRES_DB: jorginhoagent
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jorginhoagent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: jorginhoagent-cache
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Main application
+  app:
+    build: .
+    container_name: jorginhoagent-app
+    environment:
+      DATABASE_URL: postgresql://jorginhoagent:secure_password@postgres:5432/jorginhoagent
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    command: python -m src.main
+
+volumes:
+  postgres_data:
