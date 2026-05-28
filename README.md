@@ -1,120 +1,35 @@
-# 🔒 JorginhoAgent - Multi-Agent Code Security Analysis System
+# JorginhoAgent
 
-Um agente multiagente baseado em LLMs para análise automática de código com foco em segurança, detectando vulnerabilidades, avaliando contexto e gerando correções práticas.
+Projeto reduzido para análise de segurança de código com um pipeline simples de agentes e suporte a LLM.
 
-## 📋 Visão Geral
+## Instalação
 
-JorginhoAgent é um sistema de análise de código que combina três agentes especializados:
-
-1. **Agente 1 - Analisador Estático**: Detecta vulnerabilidades conhecidas usando Bandit e técnicas de análise sintática/semântica
-2. **Agente 2 - Avaliador de Contexto**: Analisa o contexto do código para reduzir falsos positivos e reclassificar severidade
-3. **Agente 3 - Gerador de Correções**: Sugere correções práticas com exemplos de código e explicações
-
-O sistema é orquestrado usando **LangGraph** para coordenar o fluxo entre agentes e é integrado com **LLMs** (OpenAI/Anthropic) para análise contextual aprimorada.
-
-## 🚀 Quickstart
-
-### Instalação
-
-```bash
-# Clone o repositório
-git clone https://github.com/seu-repo/jorginhoagent.git
-cd jorginhoagent
-
-# Crie um virtual environment
+```powershell
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# Instale as dependências
+venv\Scripts\activate
 pip install -r requirements.txt
-
-# Para desenvolvimento
-pip install -r requirements-dev.txt
 ```
 
-### Configuração
+## Uso
 
-```bash
-# Copie o arquivo de exemplo de configuração
-cp .env.example .env
-
-# Edite .env com suas credenciais
-# REQUIRED:
-# - LLM_API_KEY (OpenAI ou Anthropic)
-# - LLM_MODEL (gpt-4, claude-3-opus, etc.)
-
-# OPTIONAL:
-# - GITHUB_TOKEN (para integração com GitHub)
-# - HUGGINGFACE_API_KEY (para embeddings)
+```powershell
+python src/main.py caminho/para/seu_arquivo.py
 ```
 
-### Uso Básico
+Se nenhum arquivo for informado, o script executa uma built-in demo e gera um relatório Markdown.
 
-```python
-import asyncio
-from src.graph.orchestrator import AgentOrchestrator
-from src.tools.report_generator import ReportGenerator
+## O que foi mantido
 
-async def main():
-    # Criar orquestrador
-    orchestrator = AgentOrchestrator()
-    
-    # Código para analisar
-    code = '''
-def login(username, password):
-    query = f"SELECT * FROM users WHERE username='{username}'"
-    return db.execute(query)
-'''
-    
-    # Executar análise
-    report = await orchestrator.process_code(code, "app.py")
-    
-    # Gerar relatório
-    markdown = ReportGenerator.generate_markdown_report(report)
-    print(markdown)
+- `src/main.py`: entrada que aceita arquivo via terminal
+- `src/graph/orchestrator.py`: orquestra pipeline de análise
+- `src/agents/*`: agentes de análise estática, contexto e correção
+- `src/tools/llm_client.py`: cliente LLM consolidado para `ollama`
+- `src/tools/code_embedding.py`: utilitário de embedding com opção remota
 
-asyncio.run(main())
-```
+## Resultado esperado
 
-## 📁 Estrutura do Projeto
-
-```
-jorginhoagent/
-├── src/
-│   ├── agents/               # Implementação dos 3 agentes
-│   │   ├── static_analyzer.py
-│   │   ├── context_evaluator.py
-│   │   └── fix_generator.py
-│   ├── tools/                # Ferramentas auxiliares
-│   │   ├── static_analysis.py        # Wrapper Bandit
-│   │   ├── vulnerability_db.py       # Base de dados CWE/OWASP
-│   │   ├── code_embedding.py         # CodeBERT embeddings
-│   │   ├── github_integration.py     # API GitHub
-│   │   └── report_generator.py       # Geração de relatórios
-│   ├── models/               # Schemas Pydantic
-│   │   └── schemas.py
-│   ├── rag/                  # RAG (futuro)
-│   ├── graph/                # Orquestração LangGraph
-│   │   └── orchestrator.py
-│   ├── config/               # Configuração
-│   │   └── settings.py
-│   └── main.py               # Ponto de entrada
-├── tests/                    # Testes
-├── notebooks/                # Jupyter notebooks
-├── data/                     # Dados e datasets
-├── requirements.txt
-├── requirements-dev.txt
-└── README.md
-```
-
-## 🔍 Exemplos de Uso
-
-### Exemplo 1: Analisar um arquivo Python
-
-```python
-from pathlib import Path
-from src.graph.orchestrator import AgentOrchestrator
-import asyncio
+- `analysis_report.md` no diretório atual
+- `agents_graph.png` ao executar a demo
 
 async def analyze_file(file_path):
     orchestrator = AgentOrchestrator()
