@@ -16,7 +16,7 @@ from src.models.schemas import (
     CodeAnalysisResult,
     SecurityReport,
 )
-from src.toolkit import ReportGenerator
+from src.toolkit import LangGraphPipeline, ReportGenerator
 
 
 class AgentOrchestrator:
@@ -36,6 +36,14 @@ class AgentOrchestrator:
         self.red_team         = RedTeamAgent()
         self.context_evaluator = ContextEvaluatorAgent()
         self.fix_generator    = FixGeneratorAgent()
+        self.langgraph        = LangGraphPipeline()
+        self.langgraph.add_node("StaticAnalyzer", {"role": "analyzer"})
+        self.langgraph.add_node("RedTeam", {"role": "red_team"})
+        self.langgraph.add_node("Evaluator", {"role": "central_evaluator"})
+        self.langgraph.add_node("FixGenerator", {"role": "fix_generator"})
+        self.langgraph.add_edge("StaticAnalyzer", "Evaluator")
+        self.langgraph.add_edge("RedTeam", "Evaluator")
+        self.langgraph.add_edge("Evaluator", "FixGenerator")
 
     # ── Pipeline nodes ────────────────────────────────────────────────────────
 
@@ -53,12 +61,24 @@ class AgentOrchestrator:
         )
 
         state.static_analysis_results = static_results
+        state.static_analysis_report = CodeAnalysisResult(
+            file_path=state.file_path,
+            language="python",
+            vulnerabilities=static_results,
+            static_analysis_tool="Bandit + CWE database",
+        )
         state.red_team_report = red_team_report
+
+        print(f"  [Analisador Estático] {len(static_results)} vulnerabilidade(s) detectada(s)")
+        print(f"  [Red Team] {len(red_team_report.attack_vectors)} vetor(es) de ataque identificado(s)")
         return state
 
     async def _context_evaluation_node(self, state: AgentState) -> AgentState:
         """LLM central avalia com base nos dois relatórios."""
         print("\n" + "─" * 60)
+        print("  🔍 Avaliador Central recebendo entradas dos nós")
+        print(f"    - Analisador Estático: {len(state.static_analysis_results)} vulnerabilidade(s)")
+        print(f"    - Red Team: {len(state.red_team_report.attack_vectors) if state.red_team_report else 0} vetor(es)")
         try:
             confirmed = await self.context_evaluator.evaluate(
                 state.input_code,
@@ -67,6 +87,7 @@ class AgentOrchestrator:
                 file_path=state.file_path,
             )
             state.context_evaluation_results = confirmed
+            print(f"    - Avaliador Central confirmou {len(confirmed)} vulnerabilidade(s)")
         except Exception as e:
             print(f"Context evaluation error: {e}")
             state.context_evaluation_results = state.static_analysis_results
@@ -193,7 +214,12 @@ class AgentOrchestrator:
 
         dot.format = output_path.split(".")[-1]
         filename   = ".".join(output_path.split(".")[:-1])
-        return dot.render(filename=filename, cleanup=True)
+        graph_path = dot.render(filename=filename, cleanup=True)
+        if hasattr(self.langgraph, "render"):
+            langgraph_output = self.langgraph.render()
+            if langgraph_output:
+                print(f"LangGraph pipeline metadata: {langgraph_output[:300]}")
+        return graph_path
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

@@ -97,6 +97,7 @@ class AgentState(BaseModel):
     input_code: str
     file_path: str
     static_analysis_results: List[Vulnerability] = Field(default_factory=list)
+    static_analysis_report: Optional[CodeAnalysisResult] = Field(None)
     red_team_report: Optional[RedTeamReport] = Field(None)
     context_evaluation_results: List[Vulnerability] = Field(default_factory=list)
     fix_suggestions: List[FixSuggestion] = Field(default_factory=list)

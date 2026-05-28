@@ -1,5 +1,5 @@
 # Minimal dependencies for JorginhoAgent
-
+langchain
 langgraph
 langchain-openai
 langchain-anthropic

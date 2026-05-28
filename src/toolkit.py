@@ -2,93 +2,71 @@ import json
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-import requests
+from langchain.agents import create_agent
+from langchain.chat_models import init_chat_model
+from langchain_core.messages import HumanMessage
+
+try:
+    from langgraph import Graph
+except ImportError:
+    Graph = None
 
 from src.models.schemas import SecurityReport, Vulnerability
 
 
-class LLMClient:
-    def __init__(
-        self,
-        base_url: str,
-        api_key: str = "",
-        default_model: str = "llama3.2:3b",
-        default_embed_model: str = "nomic-embed-text:latest",
-        temperature: float = 0.0,
-    ):
-        self.base_url = base_url.rstrip("/") if base_url else ""
-        self.api_key = api_key
-        self.headers = {"Content-Type": "application/json"}
-        if api_key:
-            self.headers["X-API-Key"] = api_key
-        self.default_model = default_model
-        self.default_embed_model = default_embed_model
-        self.temperature = temperature
+class LangChainClient:
+    def __init__(self, model: str = "gpt-4o-mini", temperature: float = 0.0):
+        self.llm = init_chat_model(model, temperature=temperature)
 
-    def check_api(self) -> None:
-        if not self.base_url:
-            raise RuntimeError("BASE_URL missing")
-        try:
-            requests.get(f"{self.base_url}/health", timeout=5)
-        except requests.exceptions.ConnectionError:
-            raise RuntimeError(f"Connection error: {self.base_url}")
-        except requests.exceptions.Timeout:
-            raise RuntimeError("Timeout")
+    def generate_text(self, prompt: str) -> str:
+        response = self.llm.generate([HumanMessage(content=prompt)])
+        if response and response.generations and response.generations[0]:
+            return response.generations[0][0].text
+        return ""
 
-        if self.api_key:
-            r = requests.get(f"{self.base_url}/api/tags", headers=self.headers)
-            r.raise_for_status()
+    def run_agent(self, prompt: str, tools: List[Any]) -> str:
+        agent = create_agent(
+            self.llm,
+            tools,
+            debug=False,
+        )
+        output = agent.invoke(prompt)
+        return str(output)
 
-    def listar_modelos(self) -> List[str]:
-        r = requests.get(f"{self.base_url}/api/tags", headers=self.headers)
-        r.raise_for_status()
-        return [m["name"] for m in r.json().get("models", [])]
 
-    def gerar_texto(self, prompt: str, modelo: Optional[str] = None) -> str:
-        payload = {
-            "model": modelo or self.default_model,
-            "prompt": prompt,
-            "stream": False
-        }
-        r = requests.post(f"{self.base_url}/api/generate", headers=self.headers, json=payload)
-        r.raise_for_status()
-        return r.json().get("response", "")
+class LangGraphPipeline:
+    def __init__(self, name: str = "JorginhoAgent"):
+        self.graph = Graph(name=name) if Graph is not None else None
 
-    def chat(self, messages: List[Dict], modelo: Optional[str] = None) -> str:
-        payload = {
-            "model": modelo or self.default_model,
-            "messages": messages,
-            "stream": False
-        }
-        r = requests.post(f"{self.base_url}/api/chat", headers=self.headers, json=payload)
-        r.raise_for_status()
-        return r.json().get("message", {}).get("content", "")
+    def add_node(self, node_name: str, metadata: Optional[Dict[str, str]] = None):
+        if self.graph is None:
+            return
+        if hasattr(self.graph, "add_node"):
+            self.graph.add_node(node_name, metadata or {})
+        elif hasattr(self.graph, "add"):
+            self.graph.add(node_name, metadata or {})
 
-    def gerar_embedding(self, texto: str, modelo: Optional[str] = None) -> List[float]:
-        payload = {
-            "model": modelo or self.default_model,
-            "prompt": texto
-        }
-        r = requests.post(f"{self.base_url}/api/embeddings", headers=self.headers, json=payload)
-        r.raise_for_status()
-        return r.json().get("embedding", [])
+    def add_edge(self, source: str, target: str):
+        if self.graph is None:
+            return
+        if hasattr(self.graph, "add_edge"):
+            self.graph.add_edge(source, target)
 
-    @staticmethod
-    def similaridade_cosseno(v1: List[float], v2: List[float]) -> float:
-        dot = sum(a * b for a, b in zip(v1, v2))
-        norm1 = sum(a * a for a in v1) ** 0.5
-        norm2 = sum(b * b for b in v2) ** 0.5
-        if norm1 and norm2:
-            return dot / (norm1 * norm2)
-        return 0.0
+    def render(self) -> str:
+        if self.graph is None:
+            return ""
+        if hasattr(self.graph, "serialize"):
+            return self.graph.serialize()
+        return str(self.graph)
 
 
 class StaticAnalyzer:
     def __init__(self, severity_level: str = "high"):
         self.severity_level = severity_level
         self.severity_map = {"low": 1, "medium": 2, "high": 3}
+        self.vuln_db = get_vulnerability_db()
 
     def analyze_code(self, code: str, file_path: str = "code.py") -> List[Vulnerability]:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp_file:
@@ -122,17 +100,29 @@ class StaticAnalyzer:
             if self.severity_map.get(severity.lower(), 0) < self.severity_map.get(self.severity_level, 2):
                 continue
 
+            issue_text = result.get("issue_text", "").strip()
+            bandit_id = result.get("test_id", "Unknown")
+            code_line = result.get("line", "")
+            vuln_info = self.vuln_db.get_vulnerability_info(bandit_id) or self.vuln_db.search_by_keyword(issue_text)
+
+            cwe_id = vuln_info.get("cwe_id") if vuln_info else self._extract_cwe_id(bandit_id)
+            cwe_name = vuln_info.get("cwe_name") if vuln_info else None
+            owasp_category = vuln_info.get("owasp_category") if vuln_info else None
+            description = issue_text
+            if vuln_info and vuln_info.get("description"):
+                description = f"{issue_text} ({vuln_info['description']})"
+
             confidence_score = {"LOW": 0.5, "MEDIUM": 0.75, "HIGH": 0.95}.get(confidence, 0.7)
-            cwe_id = self._extract_cwe_id(result.get("test_id", ""))
-            
             vuln = Vulnerability(
-                type=result.get("test_id", "Unknown"),
+                type=bandit_id,
                 severity=severity,
                 line_number=result.get("line_number", 0),
-                description=result.get("issue_text", ""),
-                code_snippet=result.get("line", ""),
+                description=description,
+                code_snippet=code_line,
                 confidence=confidence_score,
                 cwe_id=cwe_id,
+                cwe_name=cwe_name,
+                owasp_category=owasp_category,
             )
             vulnerabilities.append(vuln)
 
@@ -155,12 +145,83 @@ class VulnerabilityDatabase:
 
     def _load_default_vulnerabilities(self) -> Dict[str, Dict]:
         return {
-            "SQL_INJECTION": {"cwe_id": "CWE-89"},
-            "CROSS_SITE_SCRIPTING": {"cwe_id": "CWE-79"},
-            "OS_COMMAND_INJECTION": {"cwe_id": "CWE-78"},
-            "WEAK_CRYPTOGRAPHY": {"cwe_id": "CWE-327"},
-            "CODE_INJECTION": {"cwe_id": "CWE-95"},
-            "MISSING_AUTHENTICATION": {"cwe_id": "CWE-306"},
+            "SQL_INJECTION": {
+                "cwe_id": "CWE-89",
+                "cwe_name": "SQL Injection",
+                "owasp_category": "A01:2021 - Broken Access Control",
+                "description": "Consulta de banco de dados construída por concatenação de strings.",
+                "references": ["https://owasp.org/www-project-top-ten/"],
+            },
+            "CROSS_SITE_SCRIPTING": {
+                "cwe_id": "CWE-79",
+                "cwe_name": "Cross-site Scripting",
+                "owasp_category": "A03:2021 - Injection",
+                "description": "Dados do usuário são inseridos em HTML sem escape.",
+                "references": ["https://owasp.org/www-project-top-ten/"],
+            },
+            "OS_COMMAND_INJECTION": {
+                "cwe_id": "CWE-78",
+                "cwe_name": "OS Command Injection",
+                "owasp_category": "A01:2021 - Broken Access Control",
+                "description": "Comandos do sistema são construídos com entrada não confiável.",
+                "references": ["https://owasp.org/www-project-top-ten/"],
+            },
+            "WEAK_CRYPTOGRAPHY": {
+                "cwe_id": "CWE-327",
+                "cwe_name": "Use of a Broken or Risky Cryptographic Algorithm",
+                "owasp_category": "A02:2021 - Cryptographic Failures",
+                "description": "Algoritmos fracos como MD5 ou DES estão sendo usados.",
+                "references": ["https://owasp.org/www-project-top-ten/"],
+            },
+            "CODE_INJECTION": {
+                "cwe_id": "CWE-95",
+                "cwe_name": "Improper Neutralization of Directives",
+                "owasp_category": "A03:2021 - Injection",
+                "description": "Código ou expressões são executadas diretamente sem validação.",
+                "references": ["https://owasp.org/www-project-top-ten/"],
+            },
+            "MISSING_AUTHENTICATION": {
+                "cwe_id": "CWE-306",
+                "cwe_name": "Missing Authentication for Critical Function",
+                "owasp_category": "A03:2021 - Injection",
+                "description": "Função crítica pode ser acessada sem autenticação.",
+                "references": ["https://owasp.org/www-project-top-ten/"],
+            },
+            "B201": {
+                "cwe_id": "CWE-78",
+                "cwe_name": "OS Command Injection",
+                "owasp_category": "A01:2021 - Broken Access Control",
+                "description": "Bandit test B201 reports command injection risk.",
+                "references": ["https://bandit.readthedocs.io/"],
+            },
+            "B303": {
+                "cwe_id": "CWE-345",
+                "cwe_name": "Insufficient Verification of Data Authenticity",
+                "owasp_category": "A06:2021 - Vulnerable and Outdated Components",
+                "description": "Bandit test B303 reports pickle deserialization risk.",
+                "references": ["https://bandit.readthedocs.io/"],
+            },
+            "B304": {
+                "cwe_id": "CWE-327",
+                "cwe_name": "Use of a Broken or Risky Cryptographic Algorithm",
+                "owasp_category": "A02:2021 - Cryptographic Failures",
+                "description": "Bandit test B304 reports weak cryptography.",
+                "references": ["https://bandit.readthedocs.io/"],
+            },
+            "B307": {
+                "cwe_id": "CWE-95",
+                "cwe_name": "Code Injection",
+                "owasp_category": "A03:2021 - Injection",
+                "description": "Bandit test B307 reports unsafe string formatting for exec/eval.",
+                "references": ["https://bandit.readthedocs.io/"],
+            },
+            "B608": {
+                "cwe_id": "CWE-89",
+                "cwe_name": "SQL Injection",
+                "owasp_category": "A03:2021 - Injection",
+                "description": "Bandit test B608 reports SQL injection risk.",
+                "references": ["https://bandit.readthedocs.io/"],
+            },
         }
 
     def get_vulnerability_info(self, vuln_type: str) -> Optional[Dict]:
@@ -171,9 +232,20 @@ class VulnerabilityDatabase:
                 return value
         return None
 
+    def search_by_keyword(self, text: str) -> Optional[Dict]:
+        if not text:
+            return None
+        normalized = text.lower()
+        for key, value in self.vulnerabilities.items():
+            if key.lower() in normalized:
+                return value
+            if any(word.lower() in normalized for word in ["sql", "xss", "pickle", "shell", "command", "crypto", "auth"]):
+                return value
+        return None
+
     def search_by_cwe(self, cwe_id: str) -> Optional[Dict]:
         for vuln in self.vulnerabilities.values():
-            if vuln["cwe_id"] == cwe_id:
+            if vuln.get("cwe_id") == cwe_id:
                 return vuln
         return None
 
@@ -193,31 +265,34 @@ class ReportGenerator:
         lines = []
         lines.append(f"RELATÓRIO DE SEGURANÇA: {report.analysis_id}")
         lines.append("-" * 60)
-        
+
         if report.red_team_summary:
             lines.append("[RED TEAM]")
             lines.append(report.red_team_summary)
             lines.append(f"Exploitability: {getattr(report, 'red_team_exploitability', 'N/A')}")
             lines.append("")
 
-        lines.append("[ANALISADOR E AVALIADOR CENTRAL]")
+        lines.append("[ANALISADOR ESTÁTICO]")
         if not report.analyzed_files or not report.analyzed_files[0].vulnerabilities:
-            lines.append("Nenhuma vulnerabilidade confirmada.")
+            lines.append("Nenhuma vulnerabilidade estática confirmada.")
         else:
             for file_result in report.analyzed_files:
                 for vuln in file_result.vulnerabilities:
                     if not vuln.is_false_positive:
                         lines.append(f"-> {vuln.type} (Linha {vuln.line_number}): {vuln.description}")
-        
+        lines.append("")
+
+        lines.append("[AVALIADOR CENTRAL]")
+        lines.append(report.summary)
+        lines.append("")
+
         if report.fix_suggestions:
-            lines.append("")
             lines.append("[FIX GENERATOR]")
             for fix in report.fix_suggestions:
                 lines.append(f"-> {fix.vulnerability_type}: {fix.explanation}")
 
         lines.append("-" * 60)
         lines.append(f"CONCLUSÃO FINAL (RISCO): {report.overall_risk_score:.1f}/100")
-        
         return "\n".join(lines)
 
     @staticmethod
@@ -225,10 +300,5 @@ class ReportGenerator:
         return report.model_dump_json(indent=2)
 
 
-def client_from_settings(settings) -> LLMClient:
-    return LLMClient(
-        base_url=settings.ollama_base_url,
-        api_key=settings.ollama_api_key or settings.llm_api_key,
-        default_model=settings.llm_model,
-        temperature=settings.llm_temperature,
-    )
+def client_from_settings(settings) -> LangChainClient:
+    return LangChainClient(model=settings.llm_model, temperature=settings.llm_temperature)
