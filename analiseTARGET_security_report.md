@@ -1,4 +1,4 @@
-RELATÓRIO DE SEGURANÇA: af18aeb6-be85-4bc4-8f2e-bad7dc2dad42
+RELATÓRIO DE SEGURANÇA: 0b2eed34-3ad3-401b-bdde-ad5c8a32e3e0
 ------------------------------------------------------------
 [RED TEAM]
 Concatenacão de strings em queries detectada; possível SQLi.
@@ -13,7 +13,7 @@ Exploitability: HIGH
 ⚠️  2 vulnerabilidade(s) encontrada(s): 1 alta(s), 1 média(s)
 
 [FIX GENERATOR]
--> SQL_INJECTION: Substitui concatenação de strings por queries parametrizadas
--> INSECURE_DESERIALIZATION: Recomendações gerais: validar entradas, usar parametrização e evitar eval().
+-> SQL_INJECTION: Substitua concatenação/interpolação de strings em queries SQL por queries parametrizadas.
+-> INSECURE_DESERIALIZATION: Substitua pickle por JSON para dados não confiáveis. Se pickle for necessário, use hmac para verificar integridade.
 ------------------------------------------------------------
 CONCLUSÃO FINAL (RISCO): 23.0/100
