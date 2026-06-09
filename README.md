@@ -1,21 +1,20 @@
 # JorginhoAgent
 
-Pipeline de análise de segurança de código multi-linguagem com múltiplos agentes, LLM e ferramentas SAST via Docker.
+Pipeline de análise de segurança de código multi-linguagem com múltiplos agentes, LLM e ferramentas SAST (Semgrep + Bandit).
 
 ## Linguagens Suportadas
 
-| Linguagem | Extensões | Ferramentas SAST | Compilação |
-|-----------|-----------|-----------------|------------|
-| Python | `.py` | Trivy + Bandit | Não |
-| JavaScript | `.js`, `.jsx`, `.mjs` | Trivy + Semgrep | Não |
-| TypeScript | `.ts`, `.tsx` | Trivy + Semgrep | Não |
-| Java | `.java` | Trivy + Semgrep | Sim (Docker JDK) |
-| C# | `.cs`, `.csx` | Trivy + Semgrep | Sim (Docker .NET SDK) |
+| Linguagem | Extensões | Ferramentas SAST |
+|-----------|-----------|-----------------|
+| Python | `.py` | Semgrep + Bandit |
+| JavaScript | `.js`, `.jsx`, `.mjs` | Semgrep |
+| TypeScript | `.ts`, `.tsx` | Semgrep |
+| Java | `.java` | Semgrep |
+| C# | `.cs`, `.csx` | Semgrep |
 
 ## Pré-requisitos
 
 - Python 3.11+
-- Docker (Trivy, Bandit e Semgrep rodam em containers)
 - Chave de API do servidor Ollama da disciplina
 
 ## Instalação
@@ -59,13 +58,13 @@ python main.py
 
 ### Dashboard HTML
 
-O dashboard gera um arquivo HTML estático self-contained com:
-- Gauge colorido de Risk Score
-- Gráfico de barras por severidade
+Gera um arquivo HTML estático self-contained com:
+- Gauge colorido de Risk Score (verde/amarelo/vermelho)
+- Gráfico de barras por severidade (CRITICAL, HIGH, MEDIUM, LOW)
 - Gráfico de pizza por tipo de vulnerabilidade
 - Lista detalhada de vulnerabilidades com CWE/OWASP
 - Blocos de código vulnerável + correção sugerida
-- Seção Red Team
+- Seção Red Team com vetores de ataque
 
 Ativação:
 ```powershell
@@ -77,20 +76,7 @@ set JORGINHO_DASHBOARD=true
 python main.py arquivo.py
 ```
 
-O HTML é salvo como `<nome_arquivo>_dashboard.html` e pode ser aberto diretamente no navegador.
-
-### Via Docker
-
-```powershell
-# Build
-docker build -t jorginhoagent .
-
-# Analisar arquivo (monta o diretório atual)
-docker run --rm --env-file .env -v "${PWD}:/app" jorginhoagent arquivo.py
-
-# Com dashboard
-docker run --rm --env-file .env -v "${PWD}:/app" jorginhoagent arquivo.js --dashboard
-```
+O HTML é salvo como `<nome_arquivo>_dashboard.html` e pode ser aberto diretamente no navegador sem servidor.
 
 ## Arquitetura
 
@@ -101,16 +87,14 @@ docker run --rm --env-file .env -v "${PWD}:/app" jorginhoagent arquivo.js --dash
                             │
                    ┌────────▼────────┐
                    │ Language Detect  │
-                   │ + Compilation    │
                    └────────┬────────┘
                             │
               ┌─────────────┼─────────────┐
               ▼                           ▼
 ┌──────────────────────┐    ┌──────────────────────┐
 │  Analisador Estático │    │     Red Team Agent   │
-│  Python: Trivy+Bandit│    │     (LLM + Heurís.) │
-│  JS/TS/Java/C#:      │    │                      │
-│  Trivy + Semgrep     │    │                      │
+│  Semgrep (todos)     │    │     (LLM + Heurís.) │
+│  + Bandit (Python)   │    │                      │
 └──────────┬───────────┘    └──────────┬───────────┘
            │                           │
            └─────────────┬─────────────┘
@@ -129,20 +113,19 @@ docker run --rm --env-file .env -v "${PWD}:/app" jorginhoagent arquivo.js --dash
                         ▼
            ┌──────────────────────────┐
            │   Relatório Final        │
-           │   Markdown + HTML Dashboard│
+           │   Markdown + Dashboard   │
            └──────────────────────────┘
 ```
 
 ### Fluxo de execução
 
-1. **Detecção de linguagem** — identifica o tipo de código por extensão ou heurísticas de conteúdo
-2. **Compilação** (se necessário) — Java e C# são compilados via Docker antes da análise
-3. **Análise paralela** (`asyncio.gather`):
-   - **Analisador Estático** — Trivy (dependências/secrets) + Bandit (Python) ou Semgrep (JS/TS/Java/C#)
+1. **Detecção de linguagem** — identifica por extensão ou heurísticas de conteúdo
+2. **Análise paralela** (`asyncio.gather`):
+   - **Analisador Estático** — Semgrep (todas as linguagens) + Bandit (Python)
    - **Red Team Agent** — heurísticas + LLM identificam vetores de ataque
-4. **Avaliador Central** — confirma vulnerabilidades, elimina falsos positivos
-5. **Fix Generator** — gera correções com templates (8 categorias) + LLM
-6. **Relatório** — Markdown + HTML Dashboard (se `--dashboard`)
+3. **Avaliador Central** — confirma vulnerabilidades, elimina falsos positivos
+4. **Fix Generator** — gera correções com templates (8 categorias) + LLM
+5. **Relatório** — Markdown + HTML Dashboard (se `--dashboard`)
 
 ## Estrutura do projeto
 
@@ -152,9 +135,9 @@ jorginhoagent/
 ├── src/
 │   ├── orchestrator.py        # Pipeline com 4 agentes em paralelo
 │   ├── agents.py              # StaticAnalyzerAgent, RedTeamAgent, ContextEvaluator, FixGenerator
-│   ├── static_analyzer.py     # Trivy + Bandit + Semgrep via Docker
+│   ├── static_analyzer.py     # Semgrep + Bandit (binários locais via pip)
 │   ├── language_detector.py   # Detecção automática de linguagem
-│   ├── compilation_manager.py # Compilação Java/C# via Docker
+│   ├── compilation_manager.py # Compilação Java/C# via Docker (quando necessário)
 │   ├── fix_generator.py       # Templates de correção + LLM
 │   ├── dashboard.py           # Gerador de HTML dashboard estático
 │   ├── toolkit.py             # LangChain client, LangGraph, ReportGenerator
@@ -163,11 +146,6 @@ jorginhoagent/
 │   └── models/
 │       └── schemas.py         # Vulnerability, FixSuggestion, SecurityReport
 ├── files_to_test/             # Casos de teste por linguagem
-│   ├── vuln_project/          # Python com dependências vulneráveis
-│   ├── vuln_javascript.js     # JS vulnerável
-│   ├── VulnJava.java          # Java vulnerável
-│   └── VulnCsharp.cs          # C# vulnerável
-├── Dockerfile                 # Imagem com Trivy + Bandit
 ├── requirements.txt
 └── .env                       # Configurações (não commitado)
 ```
@@ -191,12 +169,11 @@ jorginhoagent/
 - Path Traversal (CWE-22)
 - SSRF (CWE-918)
 - Cross-site Scripting (CWE-79)
-- Missing Authentication (CWE-306)
 
 ## Resultado
 
 Após execução, são gerados:
-- `<nome>_security_report.md` — relatório Markdown completo
+- `<nome>_security_report.md` — relatório Markdown
 - `<nome>_dashboard.html` — dashboard visual (com `--dashboard`)
 
 ## Licença
