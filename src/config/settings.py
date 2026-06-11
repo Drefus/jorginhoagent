@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     # Application Settings
     debug: bool = False
+    jorginho_dashboard: bool = False
 
     class Config:
         """Pydantic config."""
