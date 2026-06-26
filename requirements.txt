@@ -1,17 +1,14 @@
-# Minimal dependencies for JorginhoAgent
+# Dependências do JorginhoAgent
 langchain
 langgraph
 langchain-openai
 langchain-anthropic
-
-sentence-transformers
-torch
-
-bandit
+langchain-community
 
 pydantic
 pydantic-settings
+python-dotenv
 
 graphviz
-requests
-python-dotenv
+bandit
+semgrep

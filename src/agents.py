@@ -13,7 +13,8 @@ from src.models.schemas import (
 
 from langchain.tools import tool
 
-from src.toolkit import StaticAnalyzer, client_from_settings, LangChainClient
+from src.toolkit import client_from_settings, LangChainClient
+from src.static_analyzer import StaticAnalyzer
 import asyncio
 
 
@@ -146,9 +147,9 @@ class StaticAnalyzerAgent:
             level = severity
         self._analyzer = StaticAnalyzer(severity_level=level)
 
-    async def analyze(self, code: str, file_path: str = "code.py") -> List[Vulnerability]:
+    async def analyze(self, code: str, file_path: str = "code.py", language: str = "python") -> List[Vulnerability]:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._analyzer.analyze_code, code, file_path)
+        return await loop.run_in_executor(None, self._analyzer.analyze_code, code, file_path, language)
 
 
 class RedTeamAgent:
@@ -330,64 +331,11 @@ class ContextEvaluatorAgent:
 
 
 class FixGeneratorAgent:
+    """Agente que delega para o módulo fix_generator."""
+
     def __init__(self):
-        self.settings = get_settings()
-        try:
-            self.langchain = client_from_settings(self.settings)
-        except Exception:
-            self.langchain = None
+        from src.fix_generator import FixGenerator
+        self._generator = FixGenerator()
 
     async def generate_fixes(self, code: str, vulns: List[Vulnerability], file_path: str = "code.py") -> List[FixSuggestion]:
-        fixes: List[FixSuggestion] = []
-        for v in vulns:
-            # Simple templates for common types
-            if "SQL" in v.type.upper() or "SQL_INJECTION" in v.type.upper():
-                fixed = (
-                    "Use parameterized queries. Example using sqlite3:\n"
-                    "cursor.execute(\"SELECT * FROM users WHERE id=?\", (user_id,))"
-                )
-                fixes.append(FixSuggestion(
-                    vulnerability_type=v.type,
-                    original_code=v.code_snippet or "",
-                    fixed_code=fixed,
-                    explanation="Substitui concatenação de strings por queries parametrizadas",
-                    severity_reduced_from=v.severity,
-                    severity_reduced_to="LOW",
-                    references=["https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"]
-                ))
-            else:
-                # Try to use LLM to craft a fix when available
-                if self.langchain:
-                    prompt = (
-                        "You are a secure code assistant. Provide a concise fix for the following vulnerability. Return JSON {vulnerability_type, original_code, fixed_code, explanation, severity_reduced_to, references}.\n\n"
-                        f"VULN: {v.type}\nCODE:\n{v.code_snippet or ''}"
-                    )
-                    try:
-                        resp = await asyncio.get_running_loop().run_in_executor(None, self.langchain.generate_text, prompt)
-                        parsed = _parse_json(resp)
-                        if isinstance(parsed, dict):
-                            fixes.append(FixSuggestion(
-                                vulnerability_type=parsed.get("vulnerability_type", v.type),
-                                original_code=parsed.get("original_code", v.code_snippet or ""),
-                                fixed_code=parsed.get("fixed_code", ""),
-                                explanation=parsed.get("explanation", ""),
-                                severity_reduced_from=v.severity,
-                                severity_reduced_to=parsed.get("severity_reduced_to"),
-                                references=parsed.get("references", []),
-                            ))
-                            continue
-                    except Exception:
-                        pass
-
-                # Default generic suggestion
-                fixes.append(FixSuggestion(
-                    vulnerability_type=v.type,
-                    original_code=v.code_snippet or "",
-                    fixed_code="See remediation best practices",
-                    explanation="Recomendações gerais: validar entradas, usar parametrização e evitar eval().",
-                    severity_reduced_from=v.severity,
-                    severity_reduced_to="MEDIUM",
-                    references=["https://owasp.org/www-project-top-ten/"]
-                ))
-
-        return fixes
+        return await self._generator.generate_fixes(code, vulns, file_path)

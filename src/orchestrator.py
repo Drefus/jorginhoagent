@@ -53,7 +53,7 @@ class AgentOrchestrator:
         print("  🚀 Iniciando análise paralela (Analisador + Red Team)")
         print("═" * 60)
 
-        static_task   = self.static_analyzer.analyze(state.input_code, state.file_path)
+        static_task   = self.static_analyzer.analyze(state.input_code, state.file_path, state.metadata.get("language", "python"))
         red_team_task = self.red_team.attack(state.input_code, state.file_path)
 
         static_results, red_team_report = await asyncio.gather(
@@ -65,7 +65,7 @@ class AgentOrchestrator:
             file_path=state.file_path,
             language="python",
             vulnerabilities=static_results,
-            static_analysis_tool="Bandit + CWE database",
+            static_analysis_tool="Trivy + Bandit + CWE database",
         )
         state.red_team_report = red_team_report
 
@@ -164,6 +164,7 @@ class AgentOrchestrator:
         self,
         code: str,
         file_path: str = "code.py",
+        language: str = "python",
         pr_id: Optional[str] = None,
         pr_url: Optional[str] = None,
     ) -> Optional[SecurityReport]:
@@ -173,7 +174,7 @@ class AgentOrchestrator:
             analysis_id=str(uuid.uuid4()),
             input_code=code,
             file_path=file_path,
-            metadata={"pr_id": pr_id, "pr_url": pr_url},
+            metadata={"pr_id": pr_id, "pr_url": pr_url, "language": language},
         )
 
         state = await self._parallel_analysis(state)
