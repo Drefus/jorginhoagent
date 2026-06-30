@@ -304,56 +304,39 @@ similar_vulns = rag.retrieve_similar("SQL injection in login form", top_k=5)
 - **CodeXGLUE**: Padrões de código seguro e inseguro
 - **OWASP WebGoat**: Exercícios de segurança
 
-## 🚦 Status do Projeto
+## 🔗 Integração com GitHub (Fluxo Automático)
 
-### ✅ Implementado
+Para integrar o `JorginhoAgent` ao fluxo de desenvolvimento e garantir que ele analise automaticamente os Pull Requests (PRs), siga estes passos:
 
-- [x] Estrutura base do projeto
-- [x] Agente 1: Análise Estática
-- [x] Agente 2: Avaliador de Contexto
-- [x] Agente 3: Gerador de Correções
-- [x] Orquestrador LangGraph
-- [x] Suporte LLM (OpenAI/Anthropic)
-- [x] Geração de relatórios (Markdown/GitHub/JSON)
-- [x] Base de dados de vulnerabilidades (CWE/OWASP)
-- [x] Testes básicos
+### 1. Configuração do Webhook
+O agente utiliza eventos de Webhook para saber exatamente quando um PR foi criado ou atualizado.
 
-### 🚧 Em Progresso
+1.  **Exponha seu servidor**: Como o servidor roda localmente, use uma ferramenta de túnel (como `ngrok` ou `localtunnel`) para expor sua porta 8000:
+    ```bash
+    ngrok http 8000
+    ```
+2.  **Configure no GitHub**:
+    - Vá ao seu repositório no GitHub > **Settings** > **Webhooks** > **Add webhook**.
+    - Em **Payload URL**, cole a URL gerada pelo ngrok (ex: `https://xyz.ngrok.io/webhook`).
+    - Em **Content type**, selecione `application/json`.
+    - Em **Which events would you like to trigger this webhook?**, selecione **"Let me select individual events"** e marque apenas **"Pull requests"**.
+    - Salve o webhook.
 
-- [ ] Integração completa com GitHub API
-- [ ] RAG para embeddings de código
-- [ ] Webhooks para monitoramento automático de PRs
-- [ ] Dashboard web para visualização de resultados
-- [ ] Integração com CI/CD
+### 2. Variáveis de Ambiente Necessárias
+No seu arquivo `.env`, certifique-se de configurar as permissões corretas para a API:
 
-### 📋 Futuro
+```env
+GITHUB_TOKEN=ghp_xxxxxxxxxxxx  # Crie um PAT com escopo 'repo'
+GITHUB_REPO_OWNER=seu-usuario
+GITHUB_REPO_NAME=seu-repositorio-alvo
+```
+Além disso, lembre-se de configurar `ENABLE_GITHUB_INTEGRATION` para `true`
 
-- [ ] Suporte a múltiplas linguagens (JavaScript, Java, C#)
-- [ ] Análise de dependências e vulnerabilidades conhecidas
-- [ ] Integração com ferramentas SAST existentes
-- [ ] Análise de segurança dinâmica
-- [ ] Machine learning para priorização de vulnerabilidades
+### 3. Execução do Servidor Webhook
+O sistema já possui um servidor FastAPI preparado para escutar os eventos do GitHub. Com o ambiente virtual ativado, inicie-o na raiz do projeto:
 
-## 📄 Licença
+```bash
+uvicorn webhook_server:app --port 8000
+```
 
-MIT License
-
-## 👥 Contribuindo
-
-Contribuições são bem-vindas! Por favor:
-
-1. Faça fork do projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
-3. Commit suas mudanças (`git commit -m 'Add AmazingFeature'`)
-4. Push para a branch (`git push origin feature/AmazingFeature`)
-5. Abra um Pull Request
-
-## 📞 Suporte
-
-Para dúvidas ou issues:
-- Abra uma issue no GitHub
-- Consulte a [documentação completa](./docs)
-
----
-
-**Desenvolvido com ❤️ pelo time de segurança de software**
+> **Nota:** Certifique-se de renomear o ficheiro ` .env.example ` para ` .env ` e preencher as suas credenciais antes de iniciar o servidor.

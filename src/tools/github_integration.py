@@ -16,20 +16,23 @@ class GitHubIntegration:
     """Integration with GitHub API for PR analysis."""
 
     def __init__(self, token: Optional[str] = None):
-        """Initialize GitHub integration.
-
-        Args:
-            token: GitHub API token. If None, uses GITHUB_TOKEN from settings
-        """
         if Github is None:
             raise ImportError("PyGithub not installed")
 
-        token = token or get_settings().github_token
+        self.settings = get_settings()
+        token = token or self.settings.github_token
+        
         if not token:
             raise ValueError("GitHub token not provided")
 
-        self.github = Github(token)
-        self.user = self.github.get_user()
+        # Use o formato de autenticação de Token explícito da biblioteca
+        from github import Auth
+        auth = Auth.Token(token)
+        
+        # Conecte-se explicitamente à base URL da API
+        self.github = Github(auth=auth, base_url="https://api.github.com")
+        
+        print("DEBUG: GitHub client inicializado com Auth.Token e base_url.")
 
     def get_pr_files(self, owner: str, repo: str, pr_number: int) -> dict:
         """Get files changed in a pull request.
@@ -43,7 +46,7 @@ class GitHubIntegration:
             Dictionary with file paths and their changes
         """
         try:
-            repo_obj = self.github.get_user(owner).get_repo(repo)
+            repo_obj = self.github.get_repo(f"{owner}/{repo}")            
             pr = repo_obj.get_pull(pr_number)
 
             files_data = {}
@@ -60,27 +63,50 @@ class GitHubIntegration:
             return {}
 
     def get_pr_content(self, owner: str, repo: str, pr_number: int) -> str:
-        """Get full diff of a pull request.
-
-        Args:
-            owner: Repository owner
-            repo: Repository name
-            pr_number: Pull request number
-
-        Returns:
-            Full diff as string
-        """
+        """Get full diff of a pull request using direct requests."""
+        import requests
+        import os
+        
+        token = os.getenv("GITHUB_TOKEN")
+        
+        print(f"DEBUG: Token lido tem {len(str(token))} caracteres. Começa com: {str(token)[:6]}")
+        
+        if not token:
+            print("ERRO: GITHUB_TOKEN vazio!")
+            return ""
+        
+        
+        if not token:
+            print("ERRO: GITHUB_TOKEN não encontrado no arquivo .env!")
+            return ""
+        
+        # URL da API do GitHub para os arquivos do PR
+        url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/files"
+        
+        # O cabeçalho de autenticação usa o token dinâmico
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        
         try:
-            repo_obj = self.github.get_user(owner).get_repo(repo)
-            pr = repo_obj.get_pull(pr_number)
-
+            response = requests.get(url, headers=headers)
+            
+            if response.status_code != 200:
+                print(f"DEBUG ERRO: Status {response.status_code} - {response.text}")
+                return ""
+            
+            files = response.json()
+            
             diff_content = ""
-            for file in pr.get_files():
-                diff_content += f"\n--- {file.filename}\n"
-                if file.patch:
-                    diff_content += file.patch
-
+            for file in files:
+                patch = file.get("patch", "")
+                if patch:
+                    diff_content += f"\n--- {file.get('filename')}\n"
+                    diff_content += patch
+            
             return diff_content
+            
         except Exception as e:
             print(f"Error fetching PR content: {e}")
             return ""
@@ -100,7 +126,7 @@ class GitHubIntegration:
             True if successful, False otherwise
         """
         try:
-            repo_obj = self.github.get_user(owner).get_repo(repo)
+            repo_obj = self.github.get_repo(f"{owner}/{repo}")
             pr = repo_obj.get_pull(pr_number)
             pr.create_issue_comment(comment)
             return True
@@ -131,7 +157,7 @@ class GitHubIntegration:
             True if successful, False otherwise
         """
         try:
-            repo_obj = self.github.get_user(owner).get_repo(repo)
+            repo_obj = self.github.get_repo(f"{owner}/{repo}")
             pr = repo_obj.get_pull(pr_number)
 
             # Note: This creates a review comment, not a standard comment
@@ -158,7 +184,7 @@ class GitHubIntegration:
             True if successful, False otherwise
         """
         try:
-            repo_obj = self.github.get_user(owner).get_repo(repo)
+            repo_obj = self.github.get_repo(f"{owner}/{repo}")
             pr = repo_obj.get_pull(pr_number)
             pr.create_review_request(reviewers=reviewers)
             return True
@@ -178,7 +204,7 @@ class GitHubIntegration:
             Dictionary with PR information
         """
         try:
-            repo_obj = self.github.get_user(owner).get_repo(repo)
+            repo_obj = self.github.get_repo(f"{owner}/{repo}")
             pr = repo_obj.get_pull(pr_number)
 
             return {

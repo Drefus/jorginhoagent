@@ -25,3 +25,9 @@ sphinx-rtd-theme>=1.2.0
 # Profiling
 memory-profiler>=0.61.0
 line-profiler>=4.0.0
+
+# Integration with git
+fastapi
+uvicorn
+httpx
+python-dotenv

@@ -8,7 +8,7 @@ langchain-openai>=0.0.1
 langchain-anthropic>=0.1.0
 
 # Embeddings and Models
-huggingface-transformers>=4.30.0
+transformers>=4.30.0
 sentence-transformers>=2.2.0
 torch>=2.0.0
 
