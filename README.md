@@ -131,23 +131,26 @@ O HTML é salvo como `<nome_arquivo>_dashboard.html` e pode ser aberto diretamen
 
 ```
 jorginhoagent/
-├── main.py                    # Entrypoint com argparse
+├── main.py                        # Entrypoint com argparse
 ├── src/
-│   ├── orchestrator.py        # Pipeline com 4 agentes em paralelo
-│   ├── agents.py              # StaticAnalyzerAgent, RedTeamAgent, ContextEvaluator, FixGenerator
-│   ├── static_analyzer.py     # Semgrep + Bandit (binários locais via pip)
-│   ├── language_detector.py   # Detecção automática de linguagem
-│   ├── compilation_manager.py # Compilação Java/C# via Docker (quando necessário)
-│   ├── fix_generator.py       # Templates de correção + LLM
-│   ├── dashboard.py           # Gerador de HTML dashboard estático
-│   ├── toolkit.py             # LangChain client, LangGraph, ReportGenerator
+│   ├── orchestrator.py            # Pipeline com 4 agentes em paralelo
+│   ├── agents.py                  # StaticAnalyzerAgent, RedTeamAgent, ContextEvaluator, FixGenerator
+│   ├── static_analyzer.py         # Semgrep + Bandit (binários locais via pip)
+│   ├── language_detector.py       # Detecção automática de linguagem
+│   ├── compilation_manager.py     # Compilação Java/C# via Docker (quando necessário)
+│   ├── fix_generator.py           # Templates de correção + LLM
+│   ├── dashboard.py               # Gerador de HTML dashboard estático
+│   ├── toolkit.py                 # LangChain client, LangGraph, ReportGenerator
 │   ├── config/
-│   │   └── settings.py        # Pydantic settings (lê .env)
+│   │   └── settings.py            # Pydantic settings (lê .env)
+│   ├── tools/
+│   │   └── github_integration.py  # Integração com API GitHub
 │   └── models/
-│       └── schemas.py         # Vulnerability, FixSuggestion, SecurityReport
-├── files_to_test/             # Casos de teste por linguagem
+│       └── schemas.py             # Vulnerability, FixSuggestion, SecurityReport
+├── webhook_server                 # Recebe payloads e envia para o Agente
+├── files_to_test/                 # Casos de teste por linguagem
 ├── requirements.txt
-└── .env                       # Configurações (não commitado)
+└── .env                           # Configurações (não commitado)
 ```
 
 ## Integração com LLMs
@@ -180,13 +183,13 @@ Após execução, são gerados:
 
 ## Integração com GitHub com Webhooks (Fluxo Automático)
 
-O JorginhoAgent pode atuar como um revisor de código autônomo, analisando automaticamente qualquer Pull Request (PR) aberto no seu repositório e postando um relatório de segurança diretamente nos comentários.
+O Agente pode atuar como um revisor de código autônomo, analisando automaticamente qualquer Pull Request (PR) aberto no repositório e postando um relatório de segurança diretamente nos comentários.
 
-Siga o passo a passo abaixo para configurar essa "ponte" entre o seu ambiente local e o GitHub:
+Siga o passo a passo abaixo para configurar a ponte entre o ambiente local e o GitHub:
 
 ### Passo 1: Configuração do `.env`
 
-Na raiz do projeto, crie ou edite o arquivo `.env` para incluir as variáveis do seu servidor LLM e as credenciais do GitHub.
+Edite o arquivo `.env` para incluir as credenciais do GitHub.
 
 1. Gere um **Personal Access Token (PAT)** no GitHub:
    - Vá em *Settings > Developer Settings > Personal access tokens > Tokens (classic)*.
@@ -194,14 +197,11 @@ Na raiz do projeto, crie ou edite o arquivo `.env` para incluir as variáveis do
    - Marque a permissão **`repo`** (Full control of private repositories).
    - Copie o token gerado (começa com `ghp_`).
 
-2. Preencha o arquivo `.env`:
+2. Preencha adcione ao arquivo `.env`:
 
 ```env
 # Configurações do LLM (Exemplo usando infraestrutura da disciplina)
 GITHUB_TOKEN=ghp_xxxxxxxxxxxx
-LLM_PROVIDER=provedor_escolhido
-OLLAMA_BASE_URL=link_base
-
 GITHUB_REPO_OWNER=seu_usuario
 GITHUB_REPO_NAME=nome_do_repositorio
 
@@ -211,7 +211,7 @@ ENABLE_GITHUB_INTEGRATION=true
 
 ### Passo 2: Subindo o Servidor Webhook
 
-Para que o GitHub consiga avisar o agente sobre novos PRs, é necessário subir uma API local. Abra um terminal na pasta do projeto, ative o ambiente virtual e rode o Uvicorn:
+Para que o GitHub consiga avisar o agente sobre novos PRs, é necessário subir uma API local. Abra um terminal na pasta do projeto, ative o ambiente virtual, se ainda não estiver ativo, e rode o Uvicorn:
 
 ```bash
 # Ative o ambiente virtual (se ainda não estiver ativo)
@@ -227,7 +227,18 @@ uvicorn webhook_server:app --port 8000 --reload
 
 Como o GitHub não consegue acessar o `localhost` diretamente, use o **Ngrok** para criar uma URL pública temporária e segura.
 
-Abra um **segundo terminal** (mantenha o servidor rodando no primeiro) e digite:
+Abra um **segundo terminal** (mantenha o servidor rodando no primeiro) e faça:
+
+ *Para instalar o Ngrok:*
+
+  * **Linux:** Execute `sudo snap install ngrok`.
+  * **MacOS:** Execute `brew install ngrok/ngrok/ngrok` ou baixe o `.zip` no site oficial.
+  * **Windows:** Execute `winget install ngrok`.
+
+*Autenticação:* Crie uma conta em [dashboard.ngrok.com](https://dashboard.ngrok.com/), copie seu Authtoken e rode `ngrok config add-authtoken SEU_TOKEN` no terminal.
+
+Então execute:
+
 
 ```bash
 ngrok http 8000

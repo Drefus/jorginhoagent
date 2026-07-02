@@ -25,11 +25,9 @@ class GitHubIntegration:
         if not token:
             raise ValueError("GitHub token not provided")
 
-        # Use o formato de autenticação de Token explícito da biblioteca
         from github import Auth
         auth = Auth.Token(token)
         
-        # Conecte-se explicitamente à base URL da API
         self.github = Github(auth=auth, base_url="https://api.github.com")
         
         print("DEBUG: GitHub client inicializado com Auth.Token e base_url.")
@@ -83,7 +81,7 @@ class GitHubIntegration:
         # URL da API do GitHub para os arquivos do PR
         url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/files"
         
-        # O cabeçalho de autenticação usa o token dinâmico
+        # cabeçalho de autenticação usa o token dinâmico
         headers = {
             "Authorization": f"token {token}",
             "Accept": "application/vnd.github.v3+json"
@@ -226,7 +224,7 @@ class GitHubIntegration:
             return {}
 
 
-# Global instance
+# instancia global
 _github_instance = None
 
 
