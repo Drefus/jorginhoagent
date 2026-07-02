@@ -1,310 +1,182 @@
-# 🔒 JorginhoAgent - Multi-Agent Code Security Analysis System
+# JorginhoAgent
 
-Um agente multiagente baseado em LLMs para análise automática de código com foco em segurança, detectando vulnerabilidades, avaliando contexto e gerando correções práticas.
+Pipeline de análise de segurança de código multi-linguagem com múltiplos agentes, LLM e ferramentas SAST (Semgrep + Bandit).
 
-## 📋 Visão Geral
+## Linguagens Suportadas
 
-JorginhoAgent é um sistema de análise de código que combina três agentes especializados:
+| Linguagem | Extensões | Ferramentas SAST |
+|-----------|-----------|-----------------|
+| Python | `.py` | Semgrep + Bandit |
+| JavaScript | `.js`, `.jsx`, `.mjs` | Semgrep |
+| TypeScript | `.ts`, `.tsx` | Semgrep |
+| Java | `.java` | Semgrep |
+| C# | `.cs`, `.csx` | Semgrep |
 
-1. **Agente 1 - Analisador Estático**: Detecta vulnerabilidades conhecidas usando Bandit e técnicas de análise sintática/semântica
-2. **Agente 2 - Avaliador de Contexto**: Analisa o contexto do código para reduzir falsos positivos e reclassificar severidade
-3. **Agente 3 - Gerador de Correções**: Sugere correções práticas com exemplos de código e explicações
+## Pré-requisitos
 
-O sistema é orquestrado usando **LangGraph** para coordenar o fluxo entre agentes e é integrado com **LLMs** (OpenAI/Anthropic) para análise contextual aprimorada.
+- Python 3.11+
+- Chave de API do servidor Ollama da disciplina
 
-## 🚀 Quickstart
+## Instalação
 
-### Instalação
-
-```bash
-# Clone o repositório
-git clone https://github.com/seu-repo/jorginhoagent.git
-cd jorginhoagent
-
-# Crie um virtual environment
+```powershell
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# Instale as dependências
+venv\Scripts\activate
 pip install -r requirements.txt
-
-# Para desenvolvimento
-pip install -r requirements-dev.txt
 ```
 
-### Configuração
+Configure o `.env` na raiz do projeto:
 
-```bash
-# Copie o arquivo de exemplo de configuração
-cp .env.example .env
-
-# Edite .env com suas credenciais
-# REQUIRED:
-# - LLM_API_KEY (OpenAI ou Anthropic)
-# - LLM_MODEL (gpt-4, claude-3-opus, etc.)
-
-# OPTIONAL:
-# - GITHUB_TOKEN (para integração com GitHub)
-# - HUGGINGFACE_API_KEY (para embeddings)
+```env
+LLM_PROVIDER=ollama
+LLM_MODEL=llama3.2:3b
+LLM_API_KEY=sua_chave_aqui
+OLLAMA_BASE_URL=https://ollama.futurelab.dcc.ufmg.br
+OLLAMA_API_KEY=sua_chave_aqui
+LLM_TEMPERATURE=0.7
+LLM_MAX_TOKENS=4096
+BANDIT_LEVEL=high
+DEBUG=False
+JORGINHO_DASHBOARD=false
 ```
 
-### Uso Básico
+## Uso
 
-```python
-import asyncio
-from src.graph.orchestrator import AgentOrchestrator
-from src.tools.report_generator import ReportGenerator
+```powershell
+# Analisar arquivo (detecta linguagem automaticamente)
+python main.py caminho/para/arquivo.py
+python main.py caminho/para/arquivo.js
+python main.py caminho/para/Arquivo.java
+python main.py caminho/para/Arquivo.cs
 
-async def main():
-    # Criar orquestrador
-    orchestrator = AgentOrchestrator()
-    
-    # Código para analisar
-    code = '''
-def login(username, password):
-    query = f"SELECT * FROM users WHERE username='{username}'"
-    return db.execute(query)
-'''
-    
-    # Executar análise
-    report = await orchestrator.process_code(code, "app.py")
-    
-    # Gerar relatório
-    markdown = ReportGenerator.generate_markdown_report(report)
-    print(markdown)
+# Com dashboard HTML
+python main.py arquivo.py --dashboard
 
-asyncio.run(main())
+# Demo embutida (sem argumentos)
+python main.py
 ```
 
-## 📁 Estrutura do Projeto
+### Dashboard HTML
+
+Gera um arquivo HTML estático self-contained com:
+- Gauge colorido de Risk Score (verde/amarelo/vermelho)
+- Gráfico de barras por severidade (CRITICAL, HIGH, MEDIUM, LOW)
+- Gráfico de pizza por tipo de vulnerabilidade
+- Lista detalhada de vulnerabilidades com CWE/OWASP
+- Blocos de código vulnerável + correção sugerida
+- Seção Red Team com vetores de ataque
+
+Ativação:
+```powershell
+# Via flag
+python main.py arquivo.py --dashboard
+
+# Via variável de ambiente
+set JORGINHO_DASHBOARD=true
+python main.py arquivo.py
+```
+
+O HTML é salvo como `<nome_arquivo>_dashboard.html` e pode ser aberto diretamente no navegador sem servidor.
+
+## Arquitetura
+
+```
+                    ┌────────────────┐
+                    │  Código Fonte  │
+                    └───────┬────────┘
+                            │
+                   ┌────────▼────────┐
+                   │ Language Detect  │
+                   └────────┬────────┘
+                            │
+              ┌─────────────┼─────────────┐
+              ▼                           ▼
+┌──────────────────────┐    ┌──────────────────────┐
+│  Analisador Estático │    │     Red Team Agent   │
+│  Semgrep (todos)     │    │     (LLM + Heurís.) │
+│  + Bandit (Python)   │    │                      │
+└──────────┬───────────┘    └──────────┬───────────┘
+           │                           │
+           └─────────────┬─────────────┘
+                         ▼
+           ┌──────────────────────────┐
+           │   Avaliador Central      │
+           │   (LLM ReAct Agent)      │
+           │   Confirma + prioriza    │
+           └────────────┬─────────────┘
+                        ▼
+           ┌──────────────────────────┐
+           │   Fix Generator          │
+           │   Templates + LLM        │
+           │   Código corrigido       │
+           └────────────┬─────────────┘
+                        ▼
+           ┌──────────────────────────┐
+           │   Relatório Final        │
+           │   Markdown + Dashboard   │
+           └──────────────────────────┘
+```
+
+### Fluxo de execução
+
+1. **Detecção de linguagem** — identifica por extensão ou heurísticas de conteúdo
+2. **Análise paralela** (`asyncio.gather`):
+   - **Analisador Estático** — Semgrep (todas as linguagens) + Bandit (Python)
+   - **Red Team Agent** — heurísticas + LLM identificam vetores de ataque
+3. **Avaliador Central** — confirma vulnerabilidades, elimina falsos positivos
+4. **Fix Generator** — gera correções com templates (8 categorias) + LLM
+5. **Relatório** — Markdown + HTML Dashboard (se `--dashboard`)
+
+## Estrutura do projeto
 
 ```
 jorginhoagent/
+├── main.py                    # Entrypoint com argparse
 ├── src/
-│   ├── agents/               # Implementação dos 3 agentes
-│   │   ├── static_analyzer.py
-│   │   ├── context_evaluator.py
-│   │   └── fix_generator.py
-│   ├── tools/                # Ferramentas auxiliares
-│   │   ├── static_analysis.py        # Wrapper Bandit
-│   │   ├── vulnerability_db.py       # Base de dados CWE/OWASP
-│   │   ├── code_embedding.py         # CodeBERT embeddings
-│   │   ├── github_integration.py     # API GitHub
-│   │   └── report_generator.py       # Geração de relatórios
-│   ├── models/               # Schemas Pydantic
-│   │   └── schemas.py
-│   ├── rag/                  # RAG (futuro)
-│   ├── graph/                # Orquestração LangGraph
-│   │   └── orchestrator.py
-│   ├── config/               # Configuração
-│   │   └── settings.py
-│   └── main.py               # Ponto de entrada
-├── tests/                    # Testes
-├── notebooks/                # Jupyter notebooks
-├── data/                     # Dados e datasets
+│   ├── orchestrator.py        # Pipeline com 4 agentes em paralelo
+│   ├── agents.py              # StaticAnalyzerAgent, RedTeamAgent, ContextEvaluator, FixGenerator
+│   ├── static_analyzer.py     # Semgrep + Bandit (binários locais via pip)
+│   ├── language_detector.py   # Detecção automática de linguagem
+│   ├── compilation_manager.py # Compilação Java/C# via Docker (quando necessário)
+│   ├── fix_generator.py       # Templates de correção + LLM
+│   ├── dashboard.py           # Gerador de HTML dashboard estático
+│   ├── toolkit.py             # LangChain client, LangGraph, ReportGenerator
+│   ├── config/
+│   │   └── settings.py        # Pydantic settings (lê .env)
+│   └── models/
+│       └── schemas.py         # Vulnerability, FixSuggestion, SecurityReport
+├── files_to_test/             # Casos de teste por linguagem
 ├── requirements.txt
-├── requirements-dev.txt
-└── README.md
+└── .env                       # Configurações (não commitado)
 ```
 
-## 🔍 Exemplos de Uso
+## Integração com LLMs
 
-### Exemplo 1: Analisar um arquivo Python
+| Provider | Modelos | Configuração |
+|----------|---------|-------------|
+| Ollama (proxy disciplina) | llama3.2:3b, deepseek-r1:8b, mixtral:8x7b | `LLM_PROVIDER=ollama` |
+| OpenAI | gpt-4o-mini, gpt-4 | `LLM_PROVIDER=openai` |
+| Anthropic | claude-3-sonnet | `LLM_PROVIDER=anthropic` |
 
-```python
-from pathlib import Path
-from src.graph.orchestrator import AgentOrchestrator
-import asyncio
+## Vulnerabilidades detectadas
 
-async def analyze_file(file_path):
-    orchestrator = AgentOrchestrator()
-    code = Path(file_path).read_text()
-    report = await orchestrator.process_code(code, file_path)
-    return report
+- SQL Injection (CWE-89)
+- OS Command Injection (CWE-78)
+- Code Injection / eval (CWE-95)
+- Insecure Deserialization (CWE-502)
+- Weak Cryptography (CWE-327)
+- Hardcoded Credentials (CWE-798)
+- Path Traversal (CWE-22)
+- SSRF (CWE-918)
+- Cross-site Scripting (CWE-79)
 
-# Uso
-report = asyncio.run(analyze_file("app.py"))
-print(f"Risk Score: {report.overall_risk_score}")
-print(f"Vulnerabilities: {report.total_vulnerabilities}")
-```
+## Resultado
 
-### Exemplo 2: Integração com GitHub
+Após execução, são gerados:
+- `<nome>_security_report.md` — relatório Markdown
+- `<nome>_dashboard.html` — dashboard visual (com `--dashboard`)
 
-```python
-from src.tools.github_integration import GitHubIntegration
-from src.graph.orchestrator import AgentOrchestrator
-
-# Fetch PR
-github = GitHubIntegration(token="seu_token")
-pr_content = github.get_pr_content("owner", "repo", 123)
-
-# Analisar
-orchestrator = AgentOrchestrator()
-report = await orchestrator.process_code(pr_content, "pr_changes.py", pr_id="123")
-
-# Post resultado no PR
-from src.tools.report_generator import ReportGenerator
-comment = ReportGenerator.generate_github_comment(report)
-github.post_comment("owner", "repo", 123, comment)
-```
-
-### Exemplo 3: Gerar diferentes tipos de relatório
-
-```python
-from src.tools.report_generator import ReportGenerator
-
-# Markdown (para GitHub, documentação)
-markdown = ReportGenerator.generate_markdown_report(report)
-
-# Comentário GitHub (conciso)
-gh_comment = ReportGenerator.generate_github_comment(report)
-
-# JSON (para processamento automatizado)
-json_report = ReportGenerator.generate_json_report(report)
-```
-
-## 🧪 Testes
-
-```bash
-# Executar todos os testes
-pytest
-
-# Com cobertura
-pytest --cov=src tests/
-
-# Testes específicos
-pytest tests/test_tools.py -v
-
-# Testes async
-pytest tests/test_integration.py -v
-```
-
-## 🏗️ Arquitetura
-
-### Pipeline de Análise
-
-```
-┌─────────────────────────────────────┐
-│   Código Fonte                      │
-└────────────┬────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────────┐
-│  Agente 1: Análise Estática         │
-│  - Executa Bandit                   │
-│  - Identifica padrões inseguros     │
-│  - Enriquece com CWE/OWASP         │
-└────────────┬────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────────┐
-│  Agente 2: Avaliação de Contexto   │
-│  - Analisa fluxo de dados           │
-│  - Verifica validações              │
-│  - Reduz falsos positivos           │
-│  - Reclassifica severidade          │
-└────────────┬────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────────┐
-│  Agente 3: Gerador de Correções    │
-│  - Sugere fixes práticos            │
-│  - Gera código corrigido            │
-│  - Explica mudanças                 │
-│  - Referencia CWE/OWASP            │
-└────────────┬────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────────┐
-│   Relatório de Segurança            │
-│   - Markdown                        │
-│   - GitHub Comment                  │
-│   - JSON                            │
-└─────────────────────────────────────┘
-```
-
-### Integração com LLMs
-
-O sistema suporta múltiplos provedores de LLM:
-
-- **OpenAI** (GPT-4, GPT-3.5-turbo)
-- **Anthropic** (Claude 3 Opus, Sonnet)
-
-Configure em `.env`:
-
-```
-LLM_PROVIDER=openai
-LLM_MODEL=gpt-4
-LLM_API_KEY=sk-...
-```
-
-## 📊 Métricas de Avaliação
-
-O sistema calcula:
-
-- **Taxa de Falsos Positivos**: Vulnerabilidades confirmadas vs detectadas
-- **Precisão de Detecção**: Vulnerabilidades reais detectadas
-- **Tempo de Análise**: Duração total do pipeline
-- **Qualidade das Explicações**: BLEU/ROUGE scores (futuro)
-- **Risk Score**: Agregação ponderada de severidades (0-100)
-
-## 🔐 Vulnerabilidades Suportadas
-
-### OWASP Top 10 (2021)
-
-- **A01: Broken Access Control** - Missing authentication, CSRF
-- **A02: Cryptographic Failures** - Weak hashing, encryption
-- **A03: Injection** - SQL injection, OS command injection, XSS
-- **A04: Insecure Design** - Missing security requirements
-- **A07: Identification and Authentication Failures** - Weak auth
-
-### CWE Common Top 25
-
-- CWE-89 SQL Injection
-- CWE-79 Cross-site Scripting (XSS)
-- CWE-78 OS Command Injection
-- CWE-327 Weak Cryptography
-- CWE-200 Sensitive Data Exposure
-- E mais...
-
-## 🛠️ Desenvolvimento
-
-### Adicionar novo tipo de vulnerabilidade
-
-1. Adicione à base de dados em `src/tools/vulnerability_db.py`:
-
-```python
-"NEW_VULN_TYPE": {
-    "cwe_id": "CWE-XXX",
-    "cwe_name": "...",
-    "owasp": "A0X:2021",
-    "description": "...",
-    "remediation": "...",
-}
-```
-
-2. Adicione detector no agente apropriado
-
-3. Adicione fix template em `src/agents/fix_generator.py`
-
-### Estender com RAG
-
-O sistema está preparado para RAG (Retrieval-Augmented Generation):
-
-```python
-from src.rag.vulnerability_rag import VulnerabilityRAG
-
-rag = VulnerabilityRAG()
-similar_vulns = rag.retrieve_similar("SQL injection in login form", top_k=5)
-```
-
-## 📚 Datasets Utilizados
-
-- **CVEfixes**: Exemplos reais de vulnerabilidades e patches
-- **CodeXGLUE**: Padrões de código seguro e inseguro
-- **OWASP WebGoat**: Exercícios de segurança
-
-## 🔗 Integração com GitHub (Fluxo Automático)
+## Integração com GitHub (Fluxo Automático)
 
 Para integrar o `JorginhoAgent` ao fluxo de desenvolvimento e garantir que ele analise automaticamente os Pull Requests (PRs), siga estes passos:
 
@@ -335,8 +207,13 @@ Além disso, lembre-se de configurar `ENABLE_GITHUB_INTEGRATION` para `true`
 ### 3. Execução do Servidor Webhook
 O sistema já possui um servidor FastAPI preparado para escutar os eventos do GitHub. Com o ambiente virtual ativado, inicie-o na raiz do projeto:
 
+---
 ```bash
 uvicorn webhook_server:app --port 8000
 ```
 
 > **Nota:** Certifique-se de renomear o ficheiro ` .env.example ` para ` .env ` e preencher as suas credenciais antes de iniciar o servidor.
+
+## Licença
+
+MIT License
