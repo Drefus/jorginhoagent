@@ -1,7 +1,7 @@
 """Settings and configuration management."""
 
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic_settings import BaseSettings
 
@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     ollama_api_key: str = ""
     llm_temperature: float = 0.7
     llm_max_tokens: int = 4096
+
+    
+    github_token: str | None = None
+    github_repo_owner: str | None = None
+    github_repo_name: str | None = None
+    enable_github_integration: bool = False
 
     # Analysis Configuration
     bandit_level: Literal["low", "medium", "high"] = "high"

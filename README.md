@@ -176,43 +176,88 @@ Após execução, são gerados:
 - `<nome>_security_report.md` — relatório Markdown
 - `<nome>_dashboard.html` — dashboard visual (com `--dashboard`)
 
-## Integração com GitHub (Fluxo Automático)
 
-Para integrar o `JorginhoAgent` ao fluxo de desenvolvimento e garantir que ele analise automaticamente os Pull Requests (PRs), siga estes passos:
 
-### 1. Configuração do Webhook
-O agente utiliza eventos de Webhook para saber exatamente quando um PR foi criado ou atualizado.
+## Integração com GitHub com Webhooks (Fluxo Automático)
 
-1.  **Exponha seu servidor**: Como o servidor roda localmente, use uma ferramenta de túnel (como `ngrok` ou `localtunnel`) para expor sua porta 8000:
-    ```bash
-    ngrok http 8000
-    ```
-2.  **Configure no GitHub**:
-    - Vá ao seu repositório no GitHub > **Settings** > **Webhooks** > **Add webhook**.
-    - Em **Payload URL**, cole a URL gerada pelo ngrok (ex: `https://xyz.ngrok.io/webhook`).
-    - Em **Content type**, selecione `application/json`.
-    - Em **Which events would you like to trigger this webhook?**, selecione **"Let me select individual events"** e marque apenas **"Pull requests"**.
-    - Salve o webhook.
+O JorginhoAgent pode atuar como um revisor de código autônomo, analisando automaticamente qualquer Pull Request (PR) aberto no seu repositório e postando um relatório de segurança diretamente nos comentários.
 
-### 2. Variáveis de Ambiente Necessárias
-No seu arquivo `.env`, certifique-se de configurar as permissões corretas para a API:
+Siga o passo a passo abaixo para configurar essa "ponte" entre o seu ambiente local e o GitHub:
+
+### Passo 1: Configuração do `.env`
+
+Na raiz do projeto, crie ou edite o arquivo `.env` para incluir as variáveis do seu servidor LLM e as credenciais do GitHub.
+
+1. Gere um **Personal Access Token (PAT)** no GitHub:
+   - Vá em *Settings > Developer Settings > Personal access tokens > Tokens (classic)*.
+   - Clique em *Generate new token*.
+   - Marque a permissão **`repo`** (Full control of private repositories).
+   - Copie o token gerado (começa com `ghp_`).
+
+2. Preencha o arquivo `.env`:
 
 ```env
-GITHUB_TOKEN=ghp_xxxxxxxxxxxx  # Crie um PAT com escopo 'repo'
-GITHUB_REPO_OWNER=seu-usuario
-GITHUB_REPO_NAME=seu-repositorio-alvo
+# Configurações do LLM (Exemplo usando infraestrutura da disciplina)
+GITHUB_TOKEN=ghp_xxxxxxxxxxxx
+LLM_PROVIDER=provedor_escolhido
+OLLAMA_BASE_URL=link_base
+
+GITHUB_REPO_OWNER=seu_usuario
+GITHUB_REPO_NAME=nome_do_repositorio
+
+ENABLE_GITHUB_INTEGRATION=true
+
 ```
-Além disso, lembre-se de configurar `ENABLE_GITHUB_INTEGRATION` para `true`
 
-### 3. Execução do Servidor Webhook
-O sistema já possui um servidor FastAPI preparado para escutar os eventos do GitHub. Com o ambiente virtual ativado, inicie-o na raiz do projeto:
+### Passo 2: Subindo o Servidor Webhook
 
----
+Para que o GitHub consiga avisar o agente sobre novos PRs, é necessário subir uma API local. Abra um terminal na pasta do projeto, ative o ambiente virtual e rode o Uvicorn:
+
 ```bash
-uvicorn webhook_server:app --port 8000
-```
+# Ative o ambiente virtual (se ainda não estiver ativo)
+source venv/bin/activate  # Linux/Mac
+# ou venv\Scripts\activate # Windows
 
-> **Nota:** Certifique-se de renomear o ficheiro ` .env.example ` para ` .env ` e preencher as suas credenciais antes de iniciar o servidor.
+# Inicie o servidor
+uvicorn webhook_server:app --port 8000 --reload
+```
+*O servidor ficará escutando na porta 8000 da sua máquina.*
+
+### Passo 3: Criando o Túnel Público com Ngrok
+
+Como o GitHub não consegue acessar o `localhost` diretamente, use o **Ngrok** para criar uma URL pública temporária e segura.
+
+Abra um **segundo terminal** (mantenha o servidor rodando no primeiro) e digite:
+
+```bash
+ngrok http 8000
+```
+*Copie a URL pública gerada que o Ngrok vai exibir no terminal (Exemplo: `https://abcd-1234.ngrok-free.app`).*
+
+### Passo 4: Configurando o Webhook no Repositório do GitHub
+
+Agora é necessário que o repositório dispare eventos para o agente.
+
+1. Acesse a página do seu repositório no GitHub.
+2. Vá em **Settings** > **Webhooks** > **Add webhook**.
+3. **Payload URL:** Cole a URL gerada pelo Ngrok e adicione `/webhook` no final.
+   *(Exemplo: `https://abcd-1234.ngrok-free.app/webhook`)*
+4. **Content type:** Mude para `application/json`.
+5. Em "Which events would you like to trigger this webhook?", selecione **Let me select individual events**.
+6. Desmarque "Pushes" e marque **apenas a caixa "Pull requests"**.
+7. Clique em **Add webhook**.
+
+### Passo 5: Funcionamento
+
+Com o servidor rodando, o Ngrok ativo e o Webhook configurado:
+
+1. Crie uma nova branch no seu repositório.
+3. Faça o commit, envie para o repositório e **abra um Pull Request**.
+
+Assim que o PR for aberto, o terminal do  Servidor Webhook mostrará os logs de download do diff e o processamento paralelo dos agentes. 
+Em seguida, o Agente fará um **comentário automático no seu PR** com o relatório detalhado de segurança!
+
+
 
 ## Licença
 

@@ -4,8 +4,8 @@ from dotenv import load_dotenv
 load_dotenv() 
 
 from fastapi import FastAPI, Request, BackgroundTasks
-from src.graph.orchestrator import AgentOrchestrator
-from src.tools.report_generator import ReportGenerator
+from src.orchestrator import AgentOrchestrator
+from src.toolkit import ReportGenerator
 from src.tools.github_integration import GitHubIntegration
 
 app = FastAPI(title="JorginhoAgent GitHub Webhook")

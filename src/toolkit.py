@@ -170,6 +170,37 @@ class ReportGenerator:
     @staticmethod
     def generate_json_report(report: SecurityReport) -> str:
         return report.model_dump_json(indent=2)
+    
+    @staticmethod
+    def generate_github_comment(report: SecurityReport) -> str:
+        """Gera um comentário formatado especificamente para o Pull Request no GitHub."""
+        lines = []
+        lines.append("##Análise de Segurança")
+        lines.append(f"**Risk Score:** {report.overall_risk_score:.1f}/100")
+        lines.append(f"**Vulnerabilidades Encontradas:** {report.total_vulnerabilities}")
+        lines.append("")
+
+        if report.total_vulnerabilities == 0:
+            lines.append("✅ O código passou na análise e não foram detectadas vulnerabilidades óbvias de segurança.")
+            return "\n".join(lines)
+
+        lines.append("### 🚨 Resumo da Análise")
+        lines.append(report.summary)
+        lines.append("")
+
+        if report.fix_suggestions:
+            lines.append("### Correções Sugeridas")
+            for i, fix in enumerate(report.fix_suggestions, 1):
+                lines.append(f"<details><summary><b>{i}. {fix.vulnerability_type} ({fix.severity_reduced_from})</b></summary>")
+                lines.append("")
+                lines.append(f"{fix.explanation}")
+                if fix.fixed_code:
+                    lines.append("\n**Sugestão de Código:**\n```python\n" + fix.fixed_code.strip() + "\n```\n")
+                lines.append("</details>")
+                lines.append("")
+
+        
+        return "\n".join(lines)
 
 
 def client_from_settings(settings) -> LangChainClient:
