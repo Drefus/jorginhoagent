@@ -135,35 +135,3 @@ def _detect_by_content(content: str) -> Optional[str]:
     if "typescript" in winners:
         return "typescript"
     return winners[0]
-
-
-def get_language_tools(language: str) -> dict:
-    """Retorna ferramentas de análise recomendadas por linguagem."""
-    tools_map = {
-        "python": {
-            "sast": ["trivy", "bandit"],
-            "needs_compilation": False,
-            "docker_image": None,
-        },
-        "javascript": {
-            "sast": ["trivy", "semgrep"],
-            "needs_compilation": False,
-            "docker_image": None,
-        },
-        "typescript": {
-            "sast": ["trivy", "semgrep"],
-            "needs_compilation": False,
-            "docker_image": None,
-        },
-        "java": {
-            "sast": ["trivy", "semgrep"],
-            "needs_compilation": True,
-            "docker_image": "eclipse-temurin:17-jdk",
-        },
-        "csharp": {
-            "sast": ["trivy", "semgrep"],
-            "needs_compilation": True,
-            "docker_image": "mcr.microsoft.com/dotnet/sdk:8.0",
-        },
-    }
-    return tools_map.get(language, tools_map["python"])
