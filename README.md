@@ -131,23 +131,26 @@ O HTML é salvo como `<nome_arquivo>_dashboard.html` e pode ser aberto diretamen
 
 ```
 jorginhoagent/
-├── main.py                    # Entrypoint com argparse
+├── main.py                        # Entrypoint com argparse
 ├── src/
-│   ├── orchestrator.py        # Pipeline com 4 agentes em paralelo
-│   ├── agents.py              # StaticAnalyzerAgent, RedTeamAgent, ContextEvaluator, FixGenerator
-│   ├── static_analyzer.py     # Semgrep + Bandit (binários locais via pip)
-│   ├── language_detector.py   # Detecção automática de linguagem
-│   ├── compilation_manager.py # Compilação Java/C# via Docker (quando necessário)
-│   ├── fix_generator.py       # Templates de correção + LLM
-│   ├── dashboard.py           # Gerador de HTML dashboard estático
-│   ├── toolkit.py             # LangChain client, LangGraph, ReportGenerator
+│   ├── orchestrator.py            # Pipeline com 4 agentes em paralelo
+│   ├── agents.py                  # StaticAnalyzerAgent, RedTeamAgent, ContextEvaluator, FixGenerator
+│   ├── static_analyzer.py         # Semgrep + Bandit (binários locais via pip)
+│   ├── language_detector.py       # Detecção automática de linguagem
+│   ├── compilation_manager.py     # Compilação Java/C# via Docker (quando necessário)
+│   ├── fix_generator.py           # Templates de correção + LLM
+│   ├── dashboard.py               # Gerador de HTML dashboard estático
+│   ├── toolkit.py                 # LangChain client, LangGraph, ReportGenerator
 │   ├── config/
-│   │   └── settings.py        # Pydantic settings (lê .env)
+│   │   └── settings.py            # Pydantic settings (lê .env)
+│   ├── tools/
+│   │   └── github_integration.py  # Integração com API GitHub
 │   └── models/
-│       └── schemas.py         # Vulnerability, FixSuggestion, SecurityReport
-├── files_to_test/             # Casos de teste por linguagem
+│       └── schemas.py             # Vulnerability, FixSuggestion, SecurityReport
+├── webhook_server                 # Recebe payloads e envia para o Agente
+├── files_to_test/                 # Casos de teste por linguagem
 ├── requirements.txt
-└── .env                       # Configurações (não commitado)
+└── .env                           # Configurações (não commitado)
 ```
 
 ## Integração com LLMs
@@ -175,6 +178,97 @@ jorginhoagent/
 Após execução, são gerados:
 - `<nome>_security_report.md` — relatório Markdown
 - `<nome>_dashboard.html` — dashboard visual (com `--dashboard`)
+
+
+
+## Integração com GitHub com Webhooks (Fluxo Automático)
+
+O Agente pode atuar como um revisor de código autônomo, analisando automaticamente qualquer Pull Request (PR) aberto no repositório e postando um relatório de segurança diretamente nos comentários.
+
+Siga o passo a passo abaixo para configurar a ponte entre o ambiente local e o GitHub:
+
+### Passo 1: Configuração do `.env`
+
+Edite o arquivo `.env` para incluir as credenciais do GitHub.
+
+1. Gere um **Personal Access Token (PAT)** no GitHub:
+   - Vá em *Settings > Developer Settings > Personal access tokens > Tokens (classic)*.
+   - Clique em *Generate new token*.
+   - Marque a permissão **`repo`** (Full control of private repositories).
+   - Copie o token gerado (começa com `ghp_`).
+
+2. Preencha adcione ao arquivo `.env`:
+
+```env
+# Configurações do LLM (Exemplo usando infraestrutura da disciplina)
+GITHUB_TOKEN=ghp_xxxxxxxxxxxx
+GITHUB_REPO_OWNER=seu_usuario
+GITHUB_REPO_NAME=nome_do_repositorio
+
+ENABLE_GITHUB_INTEGRATION=true
+
+```
+
+### Passo 2: Subindo o Servidor Webhook
+
+Para que o GitHub consiga avisar o agente sobre novos PRs, é necessário subir uma API local. Abra um terminal na pasta do projeto, ative o ambiente virtual, se ainda não estiver ativo, e rode o Uvicorn:
+
+```bash
+# Ative o ambiente virtual (se ainda não estiver ativo)
+source venv/bin/activate  # Linux/Mac
+# ou venv\Scripts\activate # Windows
+
+# Inicie o servidor
+uvicorn webhook_server:app --port 8000 --reload
+```
+*O servidor ficará escutando na porta 8000 da sua máquina.*
+
+### Passo 3: Criando o Túnel Público com Ngrok
+
+Como o GitHub não consegue acessar o `localhost` diretamente, use o **Ngrok** para criar uma URL pública temporária e segura.
+
+Abra um **segundo terminal** (mantenha o servidor rodando no primeiro) e faça:
+
+ *Para instalar o Ngrok:*
+
+  * **Linux:** Execute `sudo snap install ngrok`.
+  * **MacOS:** Execute `brew install ngrok/ngrok/ngrok` ou baixe o `.zip` no site oficial.
+  * **Windows:** Execute `winget install ngrok`.
+
+*Autenticação:* Crie uma conta em [dashboard.ngrok.com](https://dashboard.ngrok.com/), copie seu Authtoken e rode `ngrok config add-authtoken SEU_TOKEN` no terminal.
+
+Então execute:
+
+
+```bash
+ngrok http 8000
+```
+*Copie a URL pública gerada que o Ngrok vai exibir no terminal (Exemplo: `https://abcd-1234.ngrok-free.app`).*
+
+### Passo 4: Configurando o Webhook no Repositório do GitHub
+
+Agora é necessário que o repositório dispare eventos para o agente.
+
+1. Acesse a página do seu repositório no GitHub.
+2. Vá em **Settings** > **Webhooks** > **Add webhook**.
+3. **Payload URL:** Cole a URL gerada pelo Ngrok e adicione `/webhook` no final.
+   *(Exemplo: `https://abcd-1234.ngrok-free.app/webhook`)*
+4. **Content type:** Mude para `application/json`.
+5. Em "Which events would you like to trigger this webhook?", selecione **Let me select individual events**.
+6. Desmarque "Pushes" e marque **apenas a caixa "Pull requests"**.
+7. Clique em **Add webhook**.
+
+### Passo 5: Funcionamento
+
+Com o servidor rodando, o Ngrok ativo e o Webhook configurado:
+
+1. Crie uma nova branch no seu repositório.
+3. Faça o commit, envie para o repositório e **abra um Pull Request**.
+
+Assim que o PR for aberto, o terminal do  Servidor Webhook mostrará os logs de download do diff e o processamento paralelo dos agentes. 
+Em seguida, o Agente fará um **comentário automático no seu PR** com o relatório detalhado de segurança!
+
+
 
 ## Licença
 
